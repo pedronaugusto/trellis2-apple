@@ -89,13 +89,16 @@ def to_glb(
     mesh_cluster_refine_iterations=0,
     mesh_cluster_global_iterations=1,
     mesh_cluster_smooth_strength=1,
+    alpha_mode: str = 'auto',
+    alpha_blend_threshold: float = 0.5,
+    alpha_blend_min_fraction: float = 0.01,
     verbose: bool = False,
     use_tqdm: bool = False,
 ):
     """
     Convert an extracted mesh to a GLB file.
     Performs cleaning, optional remeshing, UV unwrapping, and texture baking from a volume.
-    
+
     Args:
         vertices: (N, 3) tensor of vertex positions
         faces: (M, 3) tensor of vertex indices
@@ -114,6 +117,18 @@ def to_glb(
         mesh_cluster_refine_iterations: number of iterations for refining clusters in uv unwrapping
         mesh_cluster_global_iterations: number of global iterations for clustering in uv unwrapping
         mesh_cluster_smooth_strength: strength of smoothing for clustering in uv unwrapping
+        alpha_mode: 'auto' (default), 'OPAQUE', 'BLEND', or 'MASK'. 'auto' selects
+            BLEND only if more than `alpha_blend_min_fraction` of valid texels have
+            alpha below `alpha_blend_threshold`; otherwise OPAQUE. Pass 'OPAQUE' or
+            'BLEND' explicitly to override.
+        alpha_blend_threshold: in [0, 1]. With `alpha_mode='auto'`, a texel counts as
+            transparent if its baked alpha is below this fraction. Defaults to 0.5
+            so accidental sub-1.0 alpha values from numerical drift in the flow
+            model don't accidentally trigger BLEND mode.
+        alpha_blend_min_fraction: in [0, 1]. With `alpha_mode='auto'`, BLEND is
+            chosen only if at least this fraction of valid texels are transparent.
+            Defaults to 0.01 (1%) so a handful of outlier texels does not flip
+            the whole material to transparent.
         verbose: whether to print verbose messages
         use_tqdm: whether to use tqdm to display progress bar
     """
@@ -126,6 +141,8 @@ def to_glb(
             voxel_size=voxel_size, grid_size=grid_size,
             decimation_target=decimation_target, texture_size=texture_size,
             remesh=remesh, remesh_band=remesh_band, remesh_project=remesh_project,
+            alpha_mode=alpha_mode, alpha_blend_threshold=alpha_blend_threshold,
+            alpha_blend_min_fraction=alpha_blend_min_fraction,
             verbose=verbose, use_tqdm=use_tqdm,
         )
 
@@ -371,14 +388,42 @@ def to_glb(
     metallic = np.clip(attrs[..., attr_layout['metallic']].cpu().numpy() * 255, 0, 255).astype(np.uint8)
     roughness = np.clip(attrs[..., attr_layout['roughness']].cpu().numpy() * 255, 0, 255).astype(np.uint8)
     alpha = np.clip(attrs[..., attr_layout['alpha']].cpu().numpy() * 255, 0, 255).astype(np.uint8)
-    # Auto-detect transparency from baked alpha values
-    alpha_valid = alpha[mask]
-    if alpha_valid.size > 0 and alpha_valid.min() < 250:
-        alpha_mode = 'BLEND'
-        if verbose:
-            print(f"Detected transparency (alpha min={alpha_valid.min()}), using BLEND mode")
+    # Resolve alphaMode. The previous behavior was a hair-trigger min-based
+    # detection (any single texel with alpha < 250 → BLEND), which is fragile
+    # under numerical drift in the alpha attribute (e.g. bf16 flow models on
+    # Apple Silicon can leave a handful of texels with sub-1.0 alpha that are
+    # not semantically transparent). The 'auto' default now requires a
+    # meaningful *fraction* of texels to be transparent before flipping.
+    valid_modes = ('auto', 'OPAQUE', 'BLEND', 'MASK')
+    if alpha_mode not in valid_modes:
+        raise ValueError(
+            f"alpha_mode must be one of {valid_modes}, got {alpha_mode!r}"
+        )
+    if alpha_mode == 'auto':
+        alpha_valid = alpha[mask]
+        threshold_u8 = int(round(np.clip(alpha_blend_threshold, 0.0, 1.0) * 255))
+        if alpha_valid.size > 0:
+            transparent_frac = float((alpha_valid < threshold_u8).mean())
+        else:
+            transparent_frac = 0.0
+        if transparent_frac > alpha_blend_min_fraction:
+            resolved_alpha_mode = 'BLEND'
+            if verbose:
+                print(
+                    f"Detected transparency: {transparent_frac:.2%} of texels "
+                    f"have alpha < {alpha_blend_threshold:.2f} "
+                    f"(threshold {alpha_blend_min_fraction:.2%}); using BLEND mode"
+                )
+        else:
+            resolved_alpha_mode = 'OPAQUE'
+            if verbose and alpha_valid.size > 0:
+                print(
+                    f"No significant transparency: {transparent_frac:.2%} of "
+                    f"texels below threshold {alpha_blend_threshold:.2f}; "
+                    f"using OPAQUE mode"
+                )
     else:
-        alpha_mode = 'OPAQUE'
+        resolved_alpha_mode = alpha_mode
     
     # Inpainting: fill gaps (dilation) to prevent black seams at UV boundaries
     mask_inv = (~mask).astype(np.uint8)
@@ -395,7 +440,7 @@ def to_glb(
         metallicRoughnessTexture=Image.fromarray(np.concatenate([np.zeros_like(metallic), roughness, metallic], axis=-1)),
         metallicFactor=1.0,
         roughnessFactor=1.0,
-        alphaMode=alpha_mode,
+        alphaMode=resolved_alpha_mode,
         doubleSided=True,
     )
     
