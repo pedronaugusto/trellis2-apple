@@ -34,6 +34,7 @@ mlx>=0.31.0
 
 # Metal GPU packages (Apple Silicon — install with: pip install --no-build-isolation <url>)
 mtldiffrast @ https://github.com/pedronaugusto/mtldiffrast/archive/main.tar.gz
+mtlbvh @ https://github.com/pedronaugusto/mtlbvh/archive/main.tar.gz
 cumesh @ https://github.com/pedronaugusto/mtlmesh/archive/main.tar.gz
 flex_gemm @ https://github.com/pedronaugusto/mtlgemm/archive/main.tar.gz
 
