@@ -288,7 +288,13 @@ def flexible_dual_grid_to_mesh(
         connected_voxel_indices = cpu_hashmap.lookup_3d(connected_voxel_hash_key).reshape(M, 4).int()
     else:
         connected_voxel_indices = _C.hashmap_lookup_3d_cuda(*hashmap, connected_voxel_hash_key, *grid_size.tolist()).reshape(M, 4).int()
-    connected_voxel_valid = (connected_voxel_indices != 0xffffffff).all(dim=1)
+    # A missing voxel comes back as 0xffffffff, which is -1 once the lookup is
+    # narrowed to int32 above, so every index of a real voxel is >= 0. Test the
+    # sign rather than comparing against 0xffffffff: CPU and CUDA wrap an
+    # out-of-range Python scalar into the tensor's dtype (0xffffffff -> -1, which
+    # matches), but MPS compares in a wider type, so `!= 0xffffffff` is
+    # unconditionally true there and lets the sentinel through into the faces.
+    connected_voxel_valid = (connected_voxel_indices >= 0).all(dim=1)
     quad_indices = connected_voxel_indices[connected_voxel_valid].int()                             # (L, 4)
     L = quad_indices.shape[0]
 
