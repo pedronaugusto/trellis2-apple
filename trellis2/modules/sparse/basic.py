@@ -14,6 +14,38 @@ __all__ = [
 ]
 
 
+def _segment_reduce(x: torch.Tensor, lengths: torch.LongTensor, op: str) -> torch.Tensor:
+    """Reduce `x` along dim 0 over contiguous segments given by `lengths`.
+
+    `torch.segment_reduce` has no MPS kernel (pytorch#141287) and it sits on
+    the classifier-free-guidance path via `std`, so on Apple Silicon the SLat
+    sampling stage died here. Rather than making callers set the global
+    PYTORCH_ENABLE_MPS_FALLBACK=1 — which bounces every unimplemented op to
+    the CPU, not just this one — express the same reduction with index_add_ /
+    scatter_reduce_, which do have MPS kernels. Other devices keep the native
+    op so their numerics and performance are untouched.
+    """
+    if x.device.type != 'mps':
+        return torch.segment_reduce(x, reduce=op, lengths=lengths)
+
+    n = lengths.numel()
+    seg = torch.repeat_interleave(torch.arange(n, device=x.device), lengths)
+    out_shape = (n,) + x.shape[1:]
+
+    if op in ('sum', 'mean'):
+        out = x.new_zeros(out_shape)
+        out.index_add_(0, seg, x)
+        if op == 'mean':
+            out = out / lengths.to(out.dtype).reshape((-1,) + (1,) * (x.ndim - 1))
+        return out
+    if op == 'prod':
+        out = x.new_ones(out_shape)
+        seg_idx = seg.reshape((-1,) + (1,) * (x.ndim - 1)).expand_as(x)
+        out.scatter_reduce_(0, seg_idx, x, reduce='prod', include_self=True)
+        return out
+    raise ValueError(f"Unsupported reduce operation: {op}")
+
+
 class VarLenTensor:
     """
     Sequential tensor with variable length.
@@ -280,7 +312,7 @@ class VarLenTensor:
         if dim is None or 0 in dim:
             return red
         
-        red = torch.segment_reduce(red, reduce=op, lengths=self.seqlen)
+        red = _segment_reduce(red, self.seqlen, op)
         return red
     
     def mean(self, dim: Optional[Union[int, Tuple[int,...]]] = None, keepdim: bool = False) -> torch.Tensor:
