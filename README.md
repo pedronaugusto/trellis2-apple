@@ -177,6 +177,8 @@ Upon execution, the script generates the following files:
 
 **Note:** The `.glb` file is exported in `OPAQUE` mode by default. Although the alpha channel is preserved within the texture map, it is not active initially. To enable transparency, import the asset into your 3D software and manually connect the texture's alpha channel to the material's opacity or alpha input.
 
+> **Apple fork addition:** if you would rather not wire the alpha channel up by hand, `to_glb` accepts `alpha_mode='auto'`, which switches the material to `BLEND` when more than 1% of baked texels fall below 50% alpha (tunable via `alpha_blend_min_fraction` / `alpha_blend_threshold`), or `alpha_mode='BLEND'` to force it. The default stays `'OPAQUE'` so output matches upstream TRELLIS.2 exactly. This matters for glass and liquids — a fishbowl exported with the default renders as a solid vessel, which is correct upstream behaviour but rarely what you want. Note that `BLEND` disables depth-write for the whole material, so prefer it only on assets that are genuinely transparent.
+
 #### Web Demo
 
 [app.py](app.py) provides a simple web demo for image to 3D asset generation. you can run the demo with the following command:

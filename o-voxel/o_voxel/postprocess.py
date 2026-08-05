@@ -126,10 +126,15 @@ def to_glb(
         mesh_cluster_refine_iterations: number of iterations for refining clusters in uv unwrapping
         mesh_cluster_global_iterations: number of global iterations for clustering in uv unwrapping
         mesh_cluster_smooth_strength: strength of smoothing for clustering in uv unwrapping
-        alpha_mode: 'auto' (default), 'OPAQUE', 'BLEND', or 'MASK'. 'auto' selects
-            BLEND only if more than `alpha_blend_min_fraction` of valid texels have
-            alpha below `alpha_blend_threshold`; otherwise OPAQUE. Pass 'OPAQUE' or
-            'BLEND' explicitly to override.
+        alpha_mode: 'OPAQUE' (default), 'auto', 'BLEND', or 'MASK'. The default
+            matches upstream TRELLIS.2, which hardcodes OPAQUE: alpha is still
+            baked into the base-colour texture, but the material does not act on
+            it. Keep the default to reproduce upstream output exactly.
+            'auto' selects BLEND only if more than `alpha_blend_min_fraction` of
+            valid texels have alpha below `alpha_blend_threshold`, otherwise
+            OPAQUE. Transparent subjects (glass, liquid) need 'auto' or 'BLEND'
+            passed explicitly or they render as solid — that is upstream
+            behaviour, not a defect, but it is rarely what you want for glass.
         alpha_blend_threshold: in [0, 1]. With `alpha_mode='auto'`, a texel counts as
             transparent if its baked alpha is below this fraction. Defaults to 0.5
             so accidental sub-1.0 alpha values from numerical drift in the flow
