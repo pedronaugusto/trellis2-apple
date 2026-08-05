@@ -93,12 +93,35 @@ class DinoV3FeatureExtractor:
     def device(self):
         return self._device
 
+    @property
+    def _encoder(self):
+        """The module that owns `embeddings`, `rope_embeddings` and `layer`.
+
+        transformers moved this: up to ~5.5 DINOv3ViTModel exposes them at the
+        top level, while later 5.x (observed on 5.14) nests them one deeper
+        under `.model`, leaving only `embeddings`/`rope_embeddings`/`model`/
+        `norm` on the outer object. Resolve it by looking for `layer` rather
+        than pinning a transformers version, so both layouts work.
+        """
+        if hasattr(self.model, 'layer'):
+            return self.model
+        inner = getattr(self.model, 'model', None)
+        if inner is not None and hasattr(inner, 'layer'):
+            return inner
+        raise AttributeError(
+            "Could not locate the transformer blocks on "
+            f"{type(self.model).__name__}: expected `.layer` or `.model.layer`. "
+            "This usually means a transformers version with a layout neither "
+            "branch handles — please open an issue with your transformers version."
+        )
+
     def extract_features(self, image: torch.Tensor) -> torch.Tensor:
+        encoder = self._encoder
         image = image.to(self.model.embeddings.patch_embeddings.weight.dtype)
         hidden_states = self.model.embeddings(image, bool_masked_pos=None)
         position_embeddings = self.model.rope_embeddings(image)
 
-        for i, layer_module in enumerate(self.model.layer):
+        for i, layer_module in enumerate(encoder.layer):
             hidden_states = layer_module(
                 hidden_states,
                 position_embeddings=position_embeddings,

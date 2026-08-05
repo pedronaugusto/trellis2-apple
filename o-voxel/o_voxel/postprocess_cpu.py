@@ -72,7 +72,12 @@ def _rasterize_uv_gpu(vertices, faces, uvs, texture_size, device=None):
     # Output buffers
     pos_buf = torch.zeros(H, W, 3, device=device)
     mask_buf = torch.zeros(H, W, dtype=torch.bool, device=device)
-    # Use a depth buffer (face index) to handle overlaps — last writer wins like nvdiffrast
+    # Overlapping texels (UV seams, overlapping charts) resolve keep-first: the
+    # lowest face index wins. There is no depth buffer here — this rasterises in
+    # UV space, where every fragment is coplanar, so the tie-break IS the whole
+    # rule. The Metal backend resolves flat-z ties the same way (strict-Less
+    # depth test keeps the first fragment), and the two must agree or a mesh
+    # baked on the CPU fallback differs from the same mesh baked on Metal.
 
     # Process in chunks to avoid OOM
     num_faces = faces_t.shape[0]
@@ -167,6 +172,29 @@ def _rasterize_uv_gpu(vertices, faces, uvs, texture_size, device=None):
         pos_flat = interp_pos.reshape(-1, 3)[inside_flat]
 
         if abs_x_flat.numel() > 0:
+            # Keep-first, in two steps. Chunks run in ascending face order and
+            # `inside` is face-major, so "first" is always the lowest face index.
+            #
+            # 1. Drop texels an earlier chunk already claimed.
+            unclaimed = ~mask_buf[abs_y_flat, abs_x_flat]
+            abs_x_flat = abs_x_flat[unclaimed]
+            abs_y_flat = abs_y_flat[unclaimed]
+            pos_flat = pos_flat[unclaimed]
+
+        if abs_x_flat.numel() > 0:
+            # 2. Within this chunk a texel may still be covered by several
+            #    faces. Plain index_put_ would let the LAST one win, so pick the
+            #    earliest writer per texel explicitly.
+            lin = abs_y_flat * W + abs_x_flat
+            order = torch.arange(lin.numel(), device=lin.device)
+            first = torch.full((H * W,), lin.numel(), dtype=order.dtype, device=lin.device)
+            first.scatter_reduce_(0, lin, order, reduce='amin', include_self=True)
+            keep = first[lin] == order
+
+            abs_x_flat = abs_x_flat[keep]
+            abs_y_flat = abs_y_flat[keep]
+            pos_flat = pos_flat[keep]
+
             pos_buf[abs_y_flat, abs_x_flat] = pos_flat
             mask_buf[abs_y_flat, abs_x_flat] = True
 
@@ -223,7 +251,16 @@ def to_glb(
     remesh: bool = False,
     remesh_band: float = 1,
     remesh_project: float = 0.9,
-    alpha_mode: str = 'auto',
+    # Default OPAQUE, not 'auto'. A glTF BLEND material does not write the
+    # depth buffer, so the *entire* surface stops occluding — including the
+    # fully-opaque body around a few genuinely transparent texels. The result
+    # reads as flipped/random normals (you see into the interior) even though
+    # the geometry is sound. Verified on the kei asset: winding disagreement
+    # 0.019% and 100% of from-outside rays hit a front-facing triangle, yet it
+    # rendered see-through purely because ~4% low-alpha glass texels tripped
+    # BLEND. Upstream TRELLIS.2 also keeps alpha in the texture but inactive.
+    # Pass alpha_mode='auto' to opt back into detection, or 'BLEND' to force it.
+    alpha_mode: str = 'OPAQUE',
     alpha_blend_threshold: float = 0.5,
     alpha_blend_min_fraction: float = 0.01,
     verbose: bool = False,

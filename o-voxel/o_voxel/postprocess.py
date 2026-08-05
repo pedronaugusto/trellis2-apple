@@ -89,7 +89,16 @@ def to_glb(
     mesh_cluster_refine_iterations=0,
     mesh_cluster_global_iterations=1,
     mesh_cluster_smooth_strength=1,
-    alpha_mode: str = 'auto',
+    # Default OPAQUE, not 'auto'. A glTF BLEND material does not write the
+    # depth buffer, so the *entire* surface stops occluding — including the
+    # fully-opaque body around a few genuinely transparent texels. The result
+    # reads as flipped/random normals (you see into the interior) even though
+    # the geometry is sound. Verified on the kei asset: winding disagreement
+    # 0.019% and 100% of from-outside rays hit a front-facing triangle, yet it
+    # rendered see-through purely because ~4% low-alpha glass texels tripped
+    # BLEND. Upstream TRELLIS.2 also keeps alpha in the texture but inactive.
+    # Pass alpha_mode='auto' to opt back into detection, or 'BLEND' to force it.
+    alpha_mode: str = 'OPAQUE',
     alpha_blend_threshold: float = 0.5,
     alpha_blend_min_fraction: float = 0.01,
     verbose: bool = False,
@@ -195,9 +204,17 @@ def to_glb(
     if verbose:
         print(f"Original mesh: {vertices.shape[0]} vertices, {faces.shape[0]} faces")
 
-    # Move data to GPU
+    # Move data to the backend device. All of these tensors meet in downstream
+    # ops (remesh center/scale from aabb, attribute grid-sampling), so every
+    # one must land on `device` — pipeline outputs arrive on MPS while the
+    # Metal backend computes on cpu tensors (unified memory).
     vertices = vertices.to(device)
     faces = faces.to(device)
+    coords = coords.to(device)
+    attr_volume = attr_volume.to(device)
+    aabb = aabb.to(device)
+    voxel_size = voxel_size.to(device)
+    grid_size = grid_size.to(device)
 
     # Initialize mesh handler
     mesh = _MeshBackend()

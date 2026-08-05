@@ -9,7 +9,11 @@
 # at::native::mps:: and won't link.
 torch>=2.11.0
 torchvision>=0.26.0
-transformers>=4.40.0,<5
+# DINOv3ViTModel does not exist before 4.56, so the old >=4.40 floor produced a
+# broken install. The <5 cap was also wrong: 5.5.4 is what this is developed and
+# verified against. extract_features now resolves the block layout dynamically,
+# so both the flat (<=5.5) and nested (>=5.14) DINOv3 layouts work.
+transformers>=4.56.0
 safetensors
 huggingface_hub
 pillow
@@ -33,10 +37,21 @@ pydantic>=2.0
 mlx>=0.31.0
 
 # Metal GPU packages (Apple Silicon — install with: pip install --no-build-isolation <url>)
-mtldiffrast @ https://github.com/pedronaugusto/mtldiffrast/archive/main.tar.gz
-mtlbvh @ https://github.com/pedronaugusto/mtlbvh/archive/main.tar.gz
-cumesh @ https://github.com/pedronaugusto/mtlmesh/archive/main.tar.gz
-flex_gemm @ https://github.com/pedronaugusto/mtlgemm/archive/main.tar.gz
+#
+# Pinned to exact commits rather than main.tar.gz. These four are developed in
+# lockstep with this repo and a floating `main` means two installs a day apart
+# can differ silently — which is how the depth-test and BVH-stack bugs below
+# went unnoticed. To refresh: bump the SHA and re-run the test suites.
+#
+# Verified together on M3 Max / macOS 26.2 / torch 2.11.0 / Python 3.13:
+#   mtlbvh       6b2a0f6  BVH traversal stack 24->64 (deep meshes dropped subtrees)
+#   mtlgemm      b75a52d  dtype-aware flash head_dim gate (fp16/bf16 head_dim=128)
+#   mtlmesh      b63fd24  bounded hash probes, weak-CAS fix, Apple7/8 fallbacks
+#   mtldiffrast  c9499ba  nearest-z/w depth test with keep-first ties
+mtldiffrast @ https://github.com/pedronaugusto/mtldiffrast/archive/c9499ba2e4ed6849e95ce5da7aae5bf61addb528.tar.gz
+mtlbvh @ https://github.com/pedronaugusto/mtlbvh/archive/6b2a0f63b476ad8225695d092902104beafd7f58.tar.gz
+cumesh @ https://github.com/pedronaugusto/mtlmesh/archive/b63fd24969c9b40f4c9db102826ef37d0627ef55.tar.gz
+flex_gemm @ https://github.com/pedronaugusto/mtlgemm/archive/b75a52d03d4eb6b544ae922d1b78d9dbf258e7fd.tar.gz
 
 # Misc
 tqdm
