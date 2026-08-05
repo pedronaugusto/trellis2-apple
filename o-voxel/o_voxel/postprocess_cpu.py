@@ -223,6 +223,9 @@ def to_glb(
     remesh: bool = False,
     remesh_band: float = 1,
     remesh_project: float = 0.9,
+    alpha_mode: str = 'auto',
+    alpha_blend_threshold: float = 0.5,
+    alpha_blend_min_fraction: float = 0.01,
     verbose: bool = False,
     use_tqdm: bool = False,
     **kwargs,
@@ -358,14 +361,41 @@ def to_glb(
     roughness = np.clip(attrs_full[..., attr_layout['roughness']].numpy() * 255, 0, 255).astype(np.uint8)
     alpha = np.clip(attrs_full[..., attr_layout['alpha']].numpy() * 255, 0, 255).astype(np.uint8)
 
-    # Auto-detect transparency from baked alpha values
-    alpha_valid = alpha[mask]
-    if alpha_valid.size > 0 and alpha_valid.min() < 250:
-        alpha_mode = 'BLEND'
-        if verbose:
-            print(f"Detected transparency (alpha min={alpha_valid.min()}), using BLEND mode")
+    # Resolve alphaMode. See `to_glb` in postprocess.py for the rationale —
+    # the previous min-based detection (any single texel with alpha < 250 →
+    # BLEND) is too sensitive to numerical drift in the alpha attribute. The
+    # 'auto' default now requires a meaningful fraction of texels to be
+    # transparent before flipping.
+    valid_modes = ('auto', 'OPAQUE', 'BLEND', 'MASK')
+    if alpha_mode not in valid_modes:
+        raise ValueError(
+            f"alpha_mode must be one of {valid_modes}, got {alpha_mode!r}"
+        )
+    if alpha_mode == 'auto':
+        alpha_valid = alpha[mask]
+        threshold_u8 = int(round(np.clip(alpha_blend_threshold, 0.0, 1.0) * 255))
+        if alpha_valid.size > 0:
+            transparent_frac = float((alpha_valid < threshold_u8).mean())
+        else:
+            transparent_frac = 0.0
+        if transparent_frac > alpha_blend_min_fraction:
+            resolved_alpha_mode = 'BLEND'
+            if verbose:
+                print(
+                    f"Detected transparency: {transparent_frac:.2%} of texels "
+                    f"have alpha < {alpha_blend_threshold:.2f} "
+                    f"(threshold {alpha_blend_min_fraction:.2%}); using BLEND mode"
+                )
+        else:
+            resolved_alpha_mode = 'OPAQUE'
+            if verbose and alpha_valid.size > 0:
+                print(
+                    f"No significant transparency: {transparent_frac:.2%} of "
+                    f"texels below threshold {alpha_blend_threshold:.2f}; "
+                    f"using OPAQUE mode"
+                )
     else:
-        alpha_mode = 'OPAQUE'
+        resolved_alpha_mode = alpha_mode
 
     # Inpainting to fill UV seams
     base_color = cv2.inpaint(base_color, mask_inv, 3, cv2.INPAINT_TELEA)
@@ -390,7 +420,7 @@ def to_glb(
         ),
         metallicFactor=1.0,
         roughnessFactor=1.0,
-        alphaMode=alpha_mode,
+        alphaMode=resolved_alpha_mode,
         doubleSided=True,
     )
 
