@@ -32,7 +32,9 @@ if BUILD_TARGET == "cpu" or (BUILD_TARGET == "auto" and platform.system() == "Da
                     os.path.join(ROOT, "third_party/eigen"),
                 ],
                 extra_compile_args={
-                    "cxx": ["-O3", "-std=c++17"],
+                    # -Wno-c++11-narrowing: upstream initializer lists narrow size_t -> int64,
+                    # an error under clang but fine for these tensor-shape values
+                    "cxx": ["-O3", "-std=c++17", "-Wno-c++11-narrowing"],
                 },
             )
         ]
