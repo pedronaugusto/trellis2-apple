@@ -44,14 +44,14 @@ mlx>=0.31.0
 # went unnoticed. To refresh: bump the SHA and re-run the test suites.
 #
 # Verified together on M3 Max / macOS 26.2 / torch 2.11.0 / Python 3.13:
-#   mtlbvh       6b2a0f6  BVH traversal stack 24->64 (deep meshes dropped subtrees)
-#   mtlgemm      b75a52d  dtype-aware flash head_dim gate (fp16/bf16 head_dim=128)
-#   mtlmesh      b63fd24  bounded hash probes, weak-CAS fix, Apple7/8 fallbacks
-#   mtldiffrast  c9499ba  nearest-z/w depth test with keep-first ties
-mtldiffrast @ https://github.com/pedronaugusto/mtldiffrast/archive/c9499ba2e4ed6849e95ce5da7aae5bf61addb528.tar.gz
-mtlbvh @ https://github.com/pedronaugusto/mtlbvh/archive/6b2a0f63b476ad8225695d092902104beafd7f58.tar.gz
-cumesh @ https://github.com/pedronaugusto/mtlmesh/archive/b63fd24969c9b40f4c9db102826ef37d0627ef55.tar.gz
-flex_gemm @ https://github.com/pedronaugusto/mtlgemm/archive/b75a52d03d4eb6b544ae922d1b78d9dbf258e7fd.tar.gz
+#   mtlbvh       fe6660b  Metal 3.1 / macOS 14 target (+ BVH stack 24->64)
+#   mtlgemm      c2e5d3f  Metal 3.1 / macOS 14 target, int64 store offsets, sentinel dtype
+#   mtlmesh      5e67493  Metal 3.1 / macOS 14 target, voxel lookup sign check
+#   mtldiffrast  c390a92  Metal 3.1 / macOS 14 target (+ keep-first depth ties)
+mtldiffrast @ https://github.com/pedronaugusto/mtldiffrast/archive/c390a92aa296c5cf131f91253b8a11fe01ec11e4.tar.gz
+mtlbvh @ https://github.com/pedronaugusto/mtlbvh/archive/fe6660bdb7de5a12ea00bd96df2e21bdcbdd40b1.tar.gz
+cumesh @ https://github.com/pedronaugusto/mtlmesh/archive/5e6749356ba39b15489c99487f55840d49923da7.tar.gz
+flex_gemm @ https://github.com/pedronaugusto/mtlgemm/archive/c2e5d3fa15152bc4aef65773cab1ded5a1855d38.tar.gz
 
 # Misc
 tqdm
