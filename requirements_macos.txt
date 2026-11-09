@@ -46,11 +46,11 @@ mlx>=0.31.0
 # Verified together on M3 Max / macOS 27.2 / torch 2.11.0 / Python 3.13:
 #   mtlbvh       011896c  Autorelease pool on the CPU dispatch path (+ Metal 3.1 target, BVH stack 24->64)
 #   mtlgemm      c2e5d3f  Metal 3.1 / macOS 14 target, int64 store offsets, sentinel dtype
-#   mtlmesh      1493108  Fix per-call GPU memory leak with autorelease pools (+ Metal 3.1 target)
+#   mtlmesh      4a46faa  Fix per-call GPU memory leak with autorelease pools (+ Metal 3.1 target)
 #   mtldiffrast  db3186b  Autorelease pools on the CPU and render paths (+ Metal 3.1 target, keep-first ties)
 mtldiffrast @ https://github.com/pedronaugusto/mtldiffrast/archive/db3186be168a495f43ea095f7311a18a4de0a74c.tar.gz
 mtlbvh @ https://github.com/pedronaugusto/mtlbvh/archive/011896cadb12349d1f4e906af41ff96aa5b5fcb7.tar.gz
-cumesh @ https://github.com/pedronaugusto/mtlmesh/archive/1493108f61c5bb4279d61b4c20e9e6bbf23a8c8e.tar.gz
+cumesh @ https://github.com/pedronaugusto/mtlmesh/archive/4a46faae8ab6def6f308c499e22a23020cdacd5b.tar.gz
 flex_gemm @ https://github.com/pedronaugusto/mtlgemm/archive/c2e5d3fa15152bc4aef65773cab1ded5a1855d38.tar.gz
 
 # Misc
